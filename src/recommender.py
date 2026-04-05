@@ -20,6 +20,7 @@ def recommend_from_collection(movie):
         print(f"⬜ {movie['title']} → no collection")
 
     return {
+        "id": movie["id"],
         "upcoming": movie["title"],
         "release_date": movie["release_date"],
         "collection": collection_name,
@@ -30,5 +31,6 @@ def recommend_from_collection(movie):
         "budget": details.get("budget", 0),
         "popularity": movie.get("popularity", 0),
         "poster_url": f"https://image.tmdb.org/t/p/w500{movie['poster_path']}" if movie.get("poster_path") else "N/A",
+        "backdrop_url": f"https://image.tmdb.org/t/p/w780{movie['backdrop_path']}" if movie.get("backdrop_path") else None,
         "rewatch": past_movies,
     }

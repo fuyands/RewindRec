@@ -1,15 +1,15 @@
 from collections import defaultdict
 
-TITLES_PER_ROW = 4
+TITLES_PER_ROW = 5
 
 
 def render_card(rec):
     rewatch_html = ""
     if rec["rewatch"]:
         thumbs = "".join(
-            f"""<img src="{'https://image.tmdb.org/t/p/w92' + m['poster_path'] if m.get('poster_path') else ''}"
-                 title="{m['title']} ({m.get('release_date','')[:4]})"
-                 style="width:40px;border-radius:4px;margin:2px;">"""
+            f"""<a href="https://www.themoviedb.org/movie/{m['id']}" target="_blank" style="text-decoration:none;display:inline-block;margin:2px;">
+                {'<img src="https://image.tmdb.org/t/p/w92' + m['poster_path'] + '" style="width:40px;border-radius:4px;" title="' + m['title'] + ' (' + m.get('release_date','')[:4] + ')">' if m.get('poster_path') else '<span style="font-size:10px;color:#aaa;background:#333;padding:2px 4px;border-radius:4px;">' + m['title'][:15] + '</span>'}
+            </a>"""
             for m in rec["rewatch"]
         )
         rewatch_html = f"""
@@ -18,14 +18,23 @@ def render_card(rec):
             <div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:4px;">{thumbs}</div>
         </div>"""
 
+    img_url = rec.get("backdrop_url") or rec["poster_url"]
+    tmdb_url = f"https://www.themoviedb.org/movie/{rec['id']}"
+
     return f"""
-    <div style="width:160px;flex-shrink:0;background:#1a1a1a;border-radius:10px;padding:10px;box-sizing:border-box;">
-        <img src="{rec['poster_url']}" style="width:100%;border-radius:6px;">
-        <div style="margin-top:8px;font-size:13px;font-weight:bold;">{rec['upcoming']}</div>
-        <div style="font-size:11px;color:#aaa;">📅 {rec['release_date']}</div>
-        <div style="font-size:11px;color:#f5c518;">⭐ {rec['vote_average']}</div>
-        <div style="font-size:11px;color:#888;margin-top:4px;">{rec['overview'][:80]}...</div>
-        {rewatch_html}
+    <div style="width:260px;flex-shrink:0;background:#1a1a1a;border-radius:10px;overflow:hidden;box-sizing:border-box;">
+        <a href="{tmdb_url}" target="_blank">
+            <img src="{img_url}" style="width:100%;height:140px;object-fit:cover;display:block;">
+        </a>
+        <div style="padding:10px;">
+            <a href="{tmdb_url}" target="_blank" style="color:#fff;text-decoration:none;">
+                <div style="font-size:13px;font-weight:bold;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{rec['upcoming']}</div>
+            </a>
+            <div style="font-size:11px;color:#aaa;">📅 {rec['release_date']}</div>
+            <div style="font-size:11px;color:#f5c518;">⭐ {rec['vote_average']}</div>
+            <div style="font-size:11px;color:#888;margin-top:4px;">{rec['overview'][:80]}...</div>
+            {rewatch_html}
+        </div>
     </div>"""
 
 
