@@ -1,8 +1,20 @@
 from collections import defaultdict
+from difflib import SequenceMatcher
 
 TITLES_PER_ROW = 5
+DOMAIN_ICONS = {"movie": "🎬", "tv": "📺", "game": "🎮", "games": "🎮", "book": "📚"}
+DOMAIN_LABELS = {"movies": "movies", "tv": "TV shows", "games": "games"}
 
-DOMAIN_ICONS = {"movie": "🎬", "tv": "📺", "game": "🎮", "book": "📚"}
+
+def _genre_score(group_key: str, preferred: list) -> float:
+    """Return highest fuzzy match score between group key and any preferred genre."""
+    if not preferred:
+        return 0.0
+    key_lower = group_key.lower()
+    return max(
+        SequenceMatcher(None, pref, key_lower).ratio()
+        for pref in preferred
+    )
 
 
 def render_thumb(item, domain="movie"):
@@ -10,12 +22,15 @@ def render_thumb(item, domain="movie"):
     poster = item.get("poster_url") or item.get("poster_path")
     if poster and poster.startswith("/"):
         poster = f"https://image.tmdb.org/t/p/w92{poster}"
-    title = item.get("title", "")
-    year = (item.get("release_date") or item.get("air_date") or "")[:4]
-    icon = DOMAIN_ICONS.get(domain, "")
+    title = item.get("title", "").replace('"', "&quot;")
 
-    img = f'<img src="{poster}" style="width:40px;border-radius:4px;" title="{title} ({year})">' if poster else f'<span style="font-size:10px;color:#aaa;background:#333;padding:2px 4px;border-radius:4px;">{icon} {title[:12]}</span>'
-    return f'<a href="{url}" target="_blank" style="text-decoration:none;display:inline-block;margin:2px;">{img}</a>'
+    if poster:
+        inner = f'<img src="{poster}" style="width:40px;border-radius:4px;" title="{title}">'
+    else:
+        icon = DOMAIN_ICONS.get(domain, "")
+        inner = f'<span style="font-size:10px;color:#aaa;background:#333;padding:2px 4px;border-radius:4px;">{icon} {title[:12]}</span>'
+
+    return f'<a href="{url}" target="_blank" style="text-decoration:none;display:inline-block;margin:2px;">{inner}</a>'
 
 
 def render_card(rec):
@@ -24,28 +39,27 @@ def render_card(rec):
     tmdb_url = f"https://www.themoviedb.org/{tmdb_type}/{rec['id']}"
     img_url = rec.get("backdrop_url") or rec["poster_url"]
 
-    # rewatch / past seasons
     rewatch_html = ""
     if rec["rewatch"]:
         thumbs = "".join(render_thumb(m, domain) for m in rec["rewatch"])
-        label = "📺 Past seasons:" if domain == "tv" else "🔁 Rewatch first:"
+        label = "📺 Past seasons:" if domain == "tv" and all("Season" in m.get("title","") for m in rec["rewatch"]) else "🔁 Watch first:"
         rewatch_html = f"""
         <div style="margin-top:6px;">
             <div style="font-size:11px;color:#aaa;">{label}</div>
             <div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:4px;">{thumbs}</div>
         </div>"""
 
-    # cross-domain franchise plan
     franchise_html = ""
     plan = rec.get("franchise_plan", {})
     for fdomain, items in plan.get("domains", {}).items():
         if not items:
             continue
-        icon = DOMAIN_ICONS.get(fdomain.rstrip("s"), "")
-        thumbs = "".join(render_thumb(item, fdomain.rstrip("s")) for item in items[:5])
+        icon = DOMAIN_ICONS.get(fdomain, "")
+        label = DOMAIN_LABELS.get(fdomain, fdomain)
+        thumbs = "".join(render_thumb(item, fdomain) for item in items[:5])
         franchise_html += f"""
         <div style="margin-top:6px;">
-            <div style="font-size:11px;color:#aaa;">{icon} Also in this universe ({fdomain}):</div>
+            <div style="font-size:11px;color:#aaa;">{icon} Also in this universe ({label}):</div>
             <div style="display:flex;flex-wrap:wrap;gap:2px;margin-top:4px;">{thumbs}</div>
         </div>"""
 
@@ -70,7 +84,7 @@ def render_card(rec):
     </div>"""
 
 
-def render_html(recommendations: list, output_file="output.html"):
+def render_html(recommendations: list, output_file="output.html", preferred_genres: list = None):
     groups = defaultdict(list)
     for rec in recommendations:
         genre = rec["genres"][0] if rec.get("genres") else "Other"
@@ -78,10 +92,19 @@ def render_html(recommendations: list, output_file="output.html"):
         key = f"{DOMAIN_ICONS.get(domain, '')} {domain.capitalize()} — {genre}"
         groups[key].append(rec)
 
-    sorted_groups = sorted(groups.items(), key=lambda x: -len(x[1]))
+    preferred_genres = preferred_genres or []
+    sorted_groups = sorted(
+        groups.items(),
+        key=lambda x: (-_genre_score(x[0], preferred_genres), -len(x[1]))
+    )
 
     sections = ""
     for genre, recs in sorted_groups:
+        # within each group: has suggestions first, then by popularity
+        recs = sorted(recs, key=lambda r: (
+            0 if (r.get("rewatch") or r.get("franchise_plan", {}).get("domains")) else 1,
+            -r.get("popularity", 0)
+        ))
         rows_html = ""
         for i in range(0, len(recs), TITLES_PER_ROW):
             chunk = recs[i:i + TITLES_PER_ROW]

@@ -2,32 +2,41 @@
 
 An open source cross-domain recommendation engine that helps you catch up on a franchise before a new release drops — surfacing related movies, TV shows, and games from the same universe.
 
+> **Disclaimer:** This is a personal research project. It is not affiliated with, endorsed by, or connected to any corporation, streaming service, game publisher, or commercial entity. All data is sourced from public APIs (TMDB, IGDB). Use responsibly.
+
+---
+
 ## What It Does
 
 When a new movie or TV show is about to release, RewindRec:
-- Finds past entries in the same collection or series to rewatch first
-- Suggests related content across domains (e.g. a new movie → related TV shows and games)
-- Groups results by genre and renders a dark-themed HTML page with posters and links
+- Fetches upcoming movies and TV shows from TMDB within a configurable time window
+- Identifies the franchise/universe using Gemini AI
+- Searches for related content across movies, TV shows, and games
+- Verifies suggestions using a second Gemini pass — filtering unrelated results
+- Groups results by genre, ranked by your preferred genres
+- Renders a dark-themed HTML page with posters, links, and cross-domain suggestions
 
-Results are rendered to `output.html` and can be opened in any browser.
+---
 
 ## Project Structure
 
 ```
 RewindRec/
-├── main.py                  # Entry point
-├── config.py                # API keys and mock date config
+├── main.py                      # Entry point — orchestrates the full pipeline
+├── config.py                    # API keys, mock date, environment config
 ├── requirements.txt
 └── src/
     ├── sources/
-    │   ├── tmdb_movies.py   # Upcoming movies + collection lookup
-    │   ├── tmdb_tv.py       # Upcoming TV + past seasons
-    │   └── igdb.py          # Games lookup (requires IGDB keys)
-    ├── franchise.py         # Cross-domain franchise linker
-    ├── recommender.py       # Legacy recommender (superseded by main.py)
-    ├── renderer.py          # HTML generation
+    │   ├── tmdb_movies.py       # Upcoming movies + collection lookup
+    │   ├── tmdb_tv.py           # Upcoming TV shows + past seasons
+    │   └── igdb.py              # Game suggestions (requires IGDB credentials)
+    ├── agent.py                 # Gemini AI — franchise resolution + verification
+    ├── franchise.py             # Cross-domain candidate fetching + verification
+    ├── renderer.py              # HTML generation with genre grouping
     └── utils.py
 ```
+
+---
 
 ## Getting Started
 
@@ -35,9 +44,10 @@ RewindRec/
 
 - Python 3.8+
 - TMDB API key (free) — [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)
-- IGDB credentials (free, optional for game suggestions) — [api.igdb.com](https://api.igdb.com)
+- Gemini API key — [aistudio.google.com](https://aistudio.google.com)
+- IGDB credentials (optional, for game suggestions):
   - Register a Twitch app at [dev.twitch.tv/console](https://dev.twitch.tv/console)
-  - Enable IGDB access and grab your Client ID + Client Secret
+  - Enable IGDB access to get Client ID + Client Secret
 
 ### Installation
 
@@ -55,6 +65,7 @@ Create a `.env` file in the project root:
 
 ```
 TMDB_API_KEY=your_tmdb_api_key
+GEMINI_API_KEY=your_gemini_api_key
 
 # Optional — enables game suggestions
 IGDB_CLIENT_ID=your_twitch_client_id
@@ -71,34 +82,71 @@ MOCK_TODAY = None           # live mode, uses /movie/upcoming
 Adjust the lookahead window in `src/sources/tmdb_movies.py`:
 
 ```python
-UPCOMING_MONTHS_AHEAD = 3  # how many months ahead to look
+UPCOMING_MONTHS_AHEAD = 3
 ```
 
-### Run
+---
+
+## Running
 
 ```bash
 python3 main.py
+```
+
+On startup, you'll be prompted to enter your preferred genres (e.g. `horror, sci-fi, action`). These are used to rank genre groups at the top of the output. Press Enter to skip.
+
+```bash
 open output.html
 ```
 
-## Cross-Domain Recommendation Logic
+---
 
-For each upcoming movie or TV show, RewindRec builds a franchise plan:
+## How It Works
 
-- Movies → searches for related TV shows and games using the franchise/collection name
-- TV shows → surfaces past seasons of the same series + related movies and games
-- Name matching uses substring overlap to find related entries across domains
-- Game suggestions require IGDB credentials (see setup above)
-- If no IGDB keys are set, game suggestions are silently skipped
+### Pipeline
 
-Note: region filtering is intentionally removed so international releases (e.g. Japanese anime films) are included.
+```
+1. Fetch upcoming movies (TMDB /discover or /movie/upcoming)
+   + Fetch upcoming TV shows (TMDB /discover/tv)
+        ↓
+2. Gemini Call 1 — batch resolve:
+   For each title, identify franchise + search terms per domain (movies, tv, games)
+        ↓
+3. Fetch cross-domain candidates:
+   TMDB search for related movies/TV + IGDB search for related games
+        ↓
+4. Gemini Call 2 — batch verify:
+   Filter unrelated candidates. Strict for movies/TV, lenient for games.
+   Add a short reason per kept suggestion.
+        ↓
+5. Render HTML grouped by genre, ranked by user preferences + popularity
+```
+
+### Gemini Caching
+
+Gemini responses are cached in `.gemini_cache.json`. Subsequent runs reuse cached results, saving API quota. Delete the file to force a fresh run:
+
+```bash
+rm .gemini_cache.json
+```
+
+### Notes on Free Tier
+
+Gemini's free tier has daily request limits. If you hit a 429 error:
+- Wait for the daily quota to reset (midnight Pacific)
+- Or add billing at [aistudio.google.com](https://aistudio.google.com) for higher limits
+- The cache means you only pay for each unique batch of titles once
+
+---
 
 ## Roadmap
 
-- [ ] LLM-powered franchise resolver (Gemini) for smarter cross-domain matching
-- [ ] Upcoming games as a first-class feed via IGDB
 - [ ] Book suggestions via OpenLibrary
-- [ ] Personalized watchlist filtering
+- [ ] Personalized watchlist filtering (Letterboxd / Trakt integration)
+- [ ] Upcoming games as a first-class feed via IGDB
+- [ ] Web UI instead of static HTML
+
+---
 
 ## Contributing
 
@@ -109,6 +157,8 @@ Pull requests are welcome. Open an issue first for major changes.
 3. Commit (`git commit -m 'Add my feature'`)
 4. Push (`git push origin feature/my-feature`)
 5. Open a pull request
+
+---
 
 ## License
 
